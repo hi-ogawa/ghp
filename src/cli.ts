@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -165,14 +165,44 @@ function resolveId(cfg: Config, value: string): string {
   return itemidToPvti(orgDbId, projectDbId, itemDbId);
 }
 
-function gh(...args: string[]): string {
-  const result = spawnSync("gh", ["project", ...args], {
-    encoding: "utf8",
-    env: process.env,
+type GhResult = {
+  stdout: string;
+  stderr: string;
+  status: number;
+};
+
+async function runGh(args: string[]): Promise<GhResult> {
+  return await new Promise<GhResult>((resolve) => {
+    const child = spawn("gh", args, {
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    child.on("error", (err) => {
+      fail(`Failed to run gh: ${err.message}`);
+    });
+
+    child.on("close", (status) => {
+      resolve({ stdout, stderr, status: status || 0 });
+    });
   });
-  if (result.error) {
-    fail(`Failed to run gh: ${result.error.message}`);
-  }
+}
+
+async function gh(...args: string[]): Promise<string> {
+  const result = await runGh(["project", ...args]);
   if (result.status !== 0) {
     console.error(`gh project ${args.join(" ")}`);
     if (result.stderr) {
@@ -183,18 +213,15 @@ function gh(...args: string[]): string {
   return result.stdout;
 }
 
-function ghGraphql(query: string, variables: Record<string, string | number>): JsonObject {
+async function ghGraphql(
+  query: string,
+  variables: Record<string, string | number>,
+): Promise<JsonObject> {
   const args = ["api", "graphql", "-f", `query=${query}`];
   for (const [key, value] of Object.entries(variables)) {
     args.push(typeof value === "string" ? "-f" : "-F", `${key}=${String(value)}`);
   }
-  const result = spawnSync("gh", args, {
-    encoding: "utf8",
-    env: process.env,
-  });
-  if (result.error) {
-    fail(`Failed to run gh: ${result.error.message}`);
-  }
+  const result = await runGh(args);
   if (result.status !== 0) {
     if (result.stderr) {
       console.error(result.stderr.trimEnd());
@@ -231,7 +258,11 @@ function gqlItemToDict(node: JsonObject): Item {
   };
 }
 
-function itemListGraphql(cfg: Config, limit: number, queryFilter?: string): [Item[], number] {
+async function itemListGraphql(
+  cfg: Config,
+  limit: number,
+  queryFilter?: string,
+): Promise<[Item[], number]> {
   const projectId = requireConfig<string>(cfg, "project_node_id");
   const query = `
     query($projectId: ID!, $limit: Int!, $filter: String) {
@@ -250,7 +281,7 @@ function itemListGraphql(cfg: Config, limit: number, queryFilter?: string): [Ite
     variables.filter = queryFilter;
   }
 
-  const data = ghGraphql(query, variables);
+  const data = await ghGraphql(query, variables);
   const itemsData = data.data?.node?.items;
   if (!itemsData) {
     fail("Project items not found in GraphQL response");
@@ -261,14 +292,14 @@ function itemListGraphql(cfg: Config, limit: number, queryFilter?: string): [Ite
   ];
 }
 
-function itemGetGraphql(_cfg: Config, pvti: string): Item {
+async function itemGetGraphql(_cfg: Config, pvti: string): Promise<Item> {
   const query = `
     query($id: ID!) {
         node(id: $id) {
             ... on ProjectV2Item { ${ITEM_FIELDS_FRAGMENT} }
         }
     }`;
-  const data = ghGraphql(query, { id: pvti });
+  const data = await ghGraphql(query, { id: pvti });
   const node = data.data?.node;
   if (!node?.id) {
     fail(`Item not found: ${pvti}`);
@@ -296,10 +327,15 @@ function resolveFieldOption(cfg: Config, fieldName: string, optionName: string):
   );
 }
 
-function setField(cfg: Config, pvti: string, fieldName: string, optionName: string): void {
+async function setField(
+  cfg: Config,
+  pvti: string,
+  fieldName: string,
+  optionName: string,
+): Promise<void> {
   const projectId = requireConfig<string>(cfg, "project_node_id");
   const [fieldId, optionId] = resolveFieldOption(cfg, fieldName, optionName);
-  gh(
+  await gh(
     "item-edit",
     "--id",
     pvti,
@@ -324,7 +360,7 @@ function cmdAuth(): void {
   console.log(`Token saved to ${path}`);
 }
 
-function cmdSetDefault(args: string[]): void {
+async function cmdSetDefault(args: string[]): Promise<void> {
   if (args.length !== 2) {
     fail("Usage: ghp set-default <owner> <project-number>");
   }
@@ -357,7 +393,7 @@ function cmdSetDefault(args: string[]): void {
           }
         }
       }`;
-    const data = ghGraphql(query, { login: owner, number });
+    const data = await ghGraphql(query, { login: owner, number });
     const candidate = data.data?.[gqlField];
     if (candidate?.projectV2) {
       entity = candidate;
@@ -406,7 +442,7 @@ function cmdSetDefault(args: string[]): void {
   }
 }
 
-function cmdAdd(args: string[]): void {
+async function cmdAdd(args: string[]): Promise<void> {
   const parsed = parseCommandArgs(args, {
     valueFlags: new Map([
       ["--body", "body"],
@@ -428,8 +464,17 @@ function cmdAdd(args: string[]): void {
   const isUrl = title.startsWith("https://");
 
   const raw = isUrl
-    ? gh("item-add", String(projectNumber), "--owner", owner, "--url", title, "--format", "json")
-    : gh(
+    ? await gh(
+        "item-add",
+        String(projectNumber),
+        "--owner",
+        owner,
+        "--url",
+        title,
+        "--format",
+        "json",
+      )
+    : await gh(
         "item-create",
         String(projectNumber),
         "--owner",
@@ -445,10 +490,10 @@ function cmdAdd(args: string[]): void {
   const pvti = String(item.id);
 
   if (parsed.values.status) {
-    setField(cfg, pvti, "status", parsed.values.status);
+    await setField(cfg, pvti, "status", parsed.values.status);
   }
   if (parsed.values.priority) {
-    setField(cfg, pvti, "priority", parsed.values.priority);
+    await setField(cfg, pvti, "priority", parsed.values.priority);
   }
 
   const result: JsonObject = { id: pvti };
@@ -464,7 +509,7 @@ function cmdAdd(args: string[]): void {
   console.log(JSON.stringify(result, null, 2));
 }
 
-function cmdLs(args: string[]): void {
+async function cmdLs(args: string[]): Promise<void> {
   const parsed = parseCommandArgs(args, {
     valueFlags: new Map([
       ["--query", "query"],
@@ -487,7 +532,7 @@ function cmdLs(args: string[]): void {
   }
 
   const cfg = loadConfig();
-  const [items, total] = itemListGraphql(cfg, limit, parsed.values.query);
+  const [items, total] = await itemListGraphql(cfg, limit, parsed.values.query);
 
   if (parsed.booleans.json) {
     console.log(JSON.stringify(items, null, 2));
@@ -503,17 +548,17 @@ function cmdLs(args: string[]): void {
   }
 }
 
-function cmdShow(args: string[]): void {
+async function cmdShow(args: string[]): Promise<void> {
   if (args.length !== 1) {
     fail("Usage: ghp show <id>");
   }
   const cfg = loadConfig();
   const pvti = resolveId(cfg, args[0]);
-  const item = itemGetGraphql(cfg, pvti);
+  const item = await itemGetGraphql(cfg, pvti);
   console.log(JSON.stringify(item, null, 2));
 }
 
-function cmdEdit(args: string[]): void {
+async function cmdEdit(args: string[]): Promise<void> {
   const parsed = parseCommandArgs(args, {
     valueFlags: new Map([
       ["--title", "title"],
@@ -535,7 +580,7 @@ function cmdEdit(args: string[]): void {
 
   if (parsed.values.title || parsed.values.body) {
     const projectId = requireConfig<string>(cfg, "project_node_id");
-    const item = itemGetGraphql(cfg, pvti);
+    const item = await itemGetGraphql(cfg, pvti);
     const contentId = item.content.id;
     if (!contentId) {
       fail(`Item has no editable draft issue content: ${pvti}`);
@@ -550,30 +595,30 @@ function cmdEdit(args: string[]): void {
       }
       editArgs.push("--body", parsed.values.body);
     }
-    gh(...editArgs);
+    await gh(...editArgs);
   }
 
   if (parsed.values.status) {
-    setField(cfg, pvti, "status", parsed.values.status);
+    await setField(cfg, pvti, "status", parsed.values.status);
   }
   if (parsed.values.priority) {
-    setField(cfg, pvti, "priority", parsed.values.priority);
+    await setField(cfg, pvti, "priority", parsed.values.priority);
   }
 
   console.log(`Updated ${pvti}`);
 }
 
-function cmdMv(args: string[]): void {
+async function cmdMv(args: string[]): Promise<void> {
   if (args.length !== 2) {
     fail("Usage: ghp mv <id> <status>");
   }
   const cfg = loadConfig();
   const pvti = resolveId(cfg, args[0]);
-  setField(cfg, pvti, "status", args[1]);
+  await setField(cfg, pvti, "status", args[1]);
   console.log(`Moved ${pvti} -> ${args[1]}`);
 }
 
-function cmdArchive(args: string[]): void {
+async function cmdArchive(args: string[]): Promise<void> {
   if (args.length !== 1) {
     fail("Usage: ghp archive <id>");
   }
@@ -581,11 +626,11 @@ function cmdArchive(args: string[]): void {
   const pvti = resolveId(cfg, args[0]);
   const owner = requireConfig<string>(cfg, "owner");
   const projectNumber = requireConfig<number>(cfg, "project_number");
-  gh("item-archive", String(projectNumber), "--owner", owner, "--id", pvti);
+  await gh("item-archive", String(projectNumber), "--owner", owner, "--id", pvti);
   console.log(`Archived ${pvti}`);
 }
 
-function cmdDelete(args: string[]): void {
+async function cmdDelete(args: string[]): Promise<void> {
   if (args.length !== 1) {
     fail("Usage: ghp delete <id>");
   }
@@ -593,7 +638,7 @@ function cmdDelete(args: string[]): void {
   const pvti = resolveId(cfg, args[0]);
   const owner = requireConfig<string>(cfg, "owner");
   const projectNumber = requireConfig<number>(cfg, "project_number");
-  gh("item-delete", String(projectNumber), "--owner", owner, "--id", pvti);
+  await gh("item-delete", String(projectNumber), "--owner", owner, "--id", pvti);
   console.log(`Deleted ${pvti}`);
 }
 
@@ -661,7 +706,7 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   loadAuth();
 
   const [command, ...args] = process.argv.slice(2);
@@ -675,28 +720,28 @@ function main(): void {
       cmdAuth();
       break;
     case "set-default":
-      cmdSetDefault(args);
+      await cmdSetDefault(args);
       break;
     case "add":
-      cmdAdd(args);
+      await cmdAdd(args);
       break;
     case "ls":
-      cmdLs(args);
+      await cmdLs(args);
       break;
     case "show":
-      cmdShow(args);
+      await cmdShow(args);
       break;
     case "edit":
-      cmdEdit(args);
+      await cmdEdit(args);
       break;
     case "mv":
-      cmdMv(args);
+      await cmdMv(args);
       break;
     case "archive":
-      cmdArchive(args);
+      await cmdArchive(args);
       break;
     case "delete":
-      cmdDelete(args);
+      await cmdDelete(args);
       break;
     case "id":
       cmdId(args);
@@ -706,4 +751,4 @@ function main(): void {
   }
 }
 
-main();
+await main();
