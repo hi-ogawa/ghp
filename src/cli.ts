@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import process from "node:process";
 
 type JsonObject = Record<string, any>;
@@ -14,11 +14,14 @@ type Config = {
   project_node_id?: string;
   org_db_id?: number;
   project_db_id?: number;
-  fields?: Record<string, {
-    id: string;
-    name: string;
-    options: Record<string, string>;
-  }>;
+  fields?: Record<
+    string,
+    {
+      id: string;
+      name: string;
+      options: Record<string, string>;
+    }
+  >;
 };
 
 type Item = {
@@ -288,7 +291,9 @@ function resolveFieldOption(cfg: Config, fieldName: string, optionName: string):
     }
   }
 
-  fail(`Unknown ${fieldName} option: ${optionName}\nValid: ${Object.keys(field.options).join(", ")}`);
+  fail(
+    `Unknown ${fieldName} option: ${optionName}\nValid: ${Object.keys(field.options).join(", ")}`,
+  );
 }
 
 function setField(cfg: Config, pvti: string, fieldName: string, optionName: string): void {
@@ -296,10 +301,14 @@ function setField(cfg: Config, pvti: string, fieldName: string, optionName: stri
   const [fieldId, optionId] = resolveFieldOption(cfg, fieldName, optionName);
   gh(
     "item-edit",
-    "--id", pvti,
-    "--project-id", projectId,
-    "--field-id", fieldId,
-    "--single-select-option-id", optionId,
+    "--id",
+    pvti,
+    "--project-id",
+    projectId,
+    "--field-id",
+    fieldId,
+    "--single-select-option-id",
+    optionId,
   );
 }
 
@@ -309,7 +318,7 @@ function cmdAuth(): void {
     fail("Usage: echo TOKEN | ghp auth");
   }
   const path = configPath();
-  const config = existsSync(path) ? readJsonFile(path) as Config : {};
+  const config = existsSync(path) ? (readJsonFile(path) as Config) : {};
   config.gh_token = token;
   saveConfig(config);
   console.log(`Token saved to ${path}`);
@@ -378,7 +387,7 @@ function cmdSetDefault(args: string[]): void {
   }
 
   const path = configPath();
-  const config = existsSync(path) ? readJsonFile(path) as Config : {};
+  const config = existsSync(path) ? (readJsonFile(path) as Config) : {};
   Object.assign(config, {
     owner,
     project_number: number,
@@ -423,10 +432,13 @@ function cmdAdd(args: string[]): void {
     : gh(
         "item-create",
         String(projectNumber),
-        "--owner", owner,
-        "--title", title,
+        "--owner",
+        owner,
+        "--title",
+        title,
         ...(parsed.values.body ? ["--body", parsed.values.body] : []),
-        "--format", "json",
+        "--format",
+        "json",
       );
 
   const item = JSON.parse(raw) as JsonObject;

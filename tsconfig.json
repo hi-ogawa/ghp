@@ -1,0 +1,18 @@
+{
+  "include": ["src", "bin", "*.ts"],
+  "compilerOptions": {
+    "verbatimModuleSyntax": true,
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  }
+}
