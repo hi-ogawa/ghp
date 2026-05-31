@@ -1,0 +1,21 @@
+{
+  "name": "ghp",
+  "version": "0.1.0",
+  "description": "Ergonomic CLI wrapper for GitHub Projects",
+  "type": "module",
+  "bin": {
+    "ghp": "./bin/ghp.js"
+  },
+  "files": [
+    "bin/ghp.js",
+    "src/cli.ts",
+    "README.md"
+  ],
+  "dependencies": {
+    "tsx": "^4.22.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
