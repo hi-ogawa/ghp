@@ -48,7 +48,10 @@ const ITEM_FIELDS_FRAGMENT = `
         }
     }
     content {
+        __typename
         ... on DraftIssue { id title body }
+        ... on Issue { id title body }
+        ... on PullRequest { id title body }
     }
 `;
 
@@ -252,9 +255,22 @@ function gqlItemToDict(node: JsonObject): Item {
       id: String(content.id || ""),
       title: String(content.title || ""),
       body: String(content.body || ""),
-      type: "DraftIssue",
+      type: String(content.__typename || ""),
     },
   };
+}
+
+function itemContentKind(item: Item): string {
+  switch (item.content.type) {
+    case "DraftIssue":
+      return "draft";
+    case "Issue":
+      return "issue";
+    case "PullRequest":
+      return "pr";
+    default:
+      return "";
+  }
 }
 
 async function itemListGraphql(
@@ -556,9 +572,12 @@ async function cmdLs(args: string[]): Promise<void> {
   if (parsed.booleans.json) {
     console.log(JSON.stringify(items, null, 2));
   } else {
+    console.log(`  ${"ID".padEnd(12)} ${"Status".padEnd(16)} ${"Kind".padEnd(6)} Title`);
     for (const item of items) {
       const itemId = item.id.startsWith("PVTI_") ? String(pvtiToItemid(item.id)) : "";
-      console.log(`  ${itemId.padEnd(12)} ${item.status.padEnd(16)} ${item.title}`);
+      console.log(
+        `  ${itemId.padEnd(12)} ${item.status.padEnd(16)} ${itemContentKind(item).padEnd(6)} ${item.title}`,
+      );
     }
   }
 
@@ -601,7 +620,7 @@ async function cmdEdit(args: string[]): Promise<void> {
     const projectId = requireConfig<string>(cfg, "project_node_id");
     const item = await itemGetGraphql(cfg, pvti);
     const contentId = item.content.id;
-    if (!contentId) {
+    if (!contentId || item.content.type !== "DraftIssue") {
       fail(`Item has no editable draft issue content: ${pvti}`);
     }
     const editArgs = ["item-edit", "--id", contentId, "--project-id", projectId];
