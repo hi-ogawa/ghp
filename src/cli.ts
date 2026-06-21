@@ -240,12 +240,16 @@ async function ghGraphql(
   }
 }
 
+function projectUrl(cfg: Pick<Config, "owner" | "owner_type" | "project_number">): string {
+  const ownerPath = cfg.owner_type === "organization" ? "orgs" : "users";
+  return `https://github.com/${ownerPath}/${cfg.owner}/projects/${cfg.project_number}`;
+}
+
 function projectItemUrl(cfg: Config, node: JsonObject): string {
   if (!String(node.id || "").startsWith("PVTI_")) {
     return "";
   }
-  const ownerPath = cfg.owner_type === "organization" ? "orgs" : "users";
-  return `https://github.com/${ownerPath}/${cfg.owner}/projects/${cfg.project_number}/views/1?pane=issue&itemId=${pvtiToItemid(String(node.id))}`;
+  return `${projectUrl(cfg)}/views/1?pane=issue&itemId=${pvtiToItemid(String(node.id))}`;
 }
 
 function gqlItemToDict(node: JsonObject, cfg: Config): Item {
@@ -380,7 +384,11 @@ function cmdStatus(): void {
   const hasConfig = existsSync(path);
   const cfg = hasConfig ? (readJsonFile(path) as Partial<Config>) : {};
 
-  if (cfg.owner && cfg.project_number) {
+  if (cfg.owner && cfg.owner_type && cfg.project_number) {
+    console.log(
+      `Project: ${projectUrl(cfg as Pick<Config, "owner" | "owner_type" | "project_number">)}`,
+    );
+  } else if (cfg.owner && cfg.project_number) {
     console.log(`Project: ${cfg.owner}/projects/${cfg.project_number}`);
   } else {
     console.log("Project: not configured");
