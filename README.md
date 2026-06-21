@@ -27,7 +27,7 @@ echo ghp_xxxxxxxxxxxx | ghp auth
 Configure the default project:
 
 ```bash
-ghp set-default <owner> <project-number>
+ghp setup <owner> <project-number>
 ```
 
 Config is stored at `$GHP_CONFIG` when set, otherwise at:
@@ -42,6 +42,8 @@ Config is stored at `$GHP_CONFIG` when set, otherwise at:
 ghp add "task title" --status backlog
 ghp add "task title" --body "details here" --status ready
 ghp add https://github.com/org/repo/issues/123 --status ready
+
+ghp status
 
 ghp ls
 ghp ls -q "status:Backlog"
@@ -63,4 +65,4 @@ ghp id 152396987
 ghp id PVTI_lADOD1nQwc4BNmeozgkVZLs
 ```
 
-Field values are discovered by `ghp set-default` and matched case-insensitively.
+Field values are discovered by `ghp setup` and matched case-insensitively.

@@ -58,7 +58,8 @@ function usage(): string {
 
 Usage:
   ghp auth
-  ghp set-default <owner> <project-number>
+  ghp status
+  ghp setup <owner> <project-number>
   ghp add "task title" [--body "..."] [--status backlog] [--priority p1]
   ghp ls [--query "status:Backlog"] [--limit 100] [--json]
   ghp show <id>
@@ -100,7 +101,7 @@ function loadAuth(): void {
 function loadConfig(): Config {
   const path = configPath();
   if (!existsSync(path)) {
-    fail(`No project configured. Run: ghp set-default <owner> <number>`);
+    fail(`No project configured. Run: ghp setup <owner> <number>`);
   }
   return readJsonFile(path) as Config;
 }
@@ -122,7 +123,7 @@ function readJsonFile(path: string): JsonObject {
 function requireConfig<T>(cfg: Config, key: keyof Config): T {
   const value = cfg[key];
   if (value === undefined || value === null || value === "") {
-    fail(`Missing ${String(key)} in ${configPath()}. Run: ghp set-default <owner> <number>`);
+    fail(`Missing ${String(key)} in ${configPath()}. Run: ghp setup <owner> <number>`);
   }
   return value as T;
 }
@@ -371,9 +372,40 @@ function cmdAuth(): void {
   console.log(`Token saved to ${path}`);
 }
 
-async function cmdSetDefault(args: string[]): Promise<void> {
+function cmdStatus(): void {
+  const path = configPath();
+  const hasConfig = existsSync(path);
+  const cfg = hasConfig ? (readJsonFile(path) as Config) : {};
+
+  if (cfg.owner && cfg.project_number) {
+    console.log(`Project: ${cfg.owner}/projects/${cfg.project_number}`);
+  } else {
+    console.log("Project: not configured");
+  }
+  console.log(`Config:  ${path}${hasConfig ? "" : " (missing)"}`);
+
+  if (process.env.GH_TOKEN) {
+    console.log("Auth:    GH_TOKEN configured");
+  } else if (cfg.gh_token) {
+    console.log("Auth:    token configured in config");
+  } else {
+    console.log("Auth:    not configured");
+  }
+
+  const fields = cfg.fields || {};
+  const entries = Object.entries(fields);
+  if (entries.length > 0) {
+    console.log("");
+    console.log("Fields:");
+    for (const [name, field] of entries) {
+      console.log(`  ${name}: ${Object.keys(field.options).join(", ")}`);
+    }
+  }
+}
+
+async function cmdSetup(args: string[]): Promise<void> {
   if (args.length !== 2) {
-    fail("Usage: ghp set-default <owner> <project-number>");
+    fail("Usage: ghp setup <owner> <project-number>");
   }
   const [owner, rawNumber] = args;
   const number = Number.parseInt(rawNumber, 10);
@@ -739,8 +771,12 @@ async function main(): Promise<void> {
     case "auth":
       cmdAuth();
       break;
+    case "status":
+      cmdStatus();
+      break;
+    case "setup":
     case "set-default":
-      await cmdSetDefault(args);
+      await cmdSetup(args);
       break;
     case "add":
       await cmdAdd(args);
