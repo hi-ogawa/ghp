@@ -9,6 +9,7 @@ type JsonObject = Record<string, any>;
 
 type Config = {
   owner?: string;
+  owner_type?: "user" | "organization";
   project_number?: number;
   project_node_id?: string;
   org_db_id?: number;
@@ -240,7 +241,15 @@ async function ghGraphql(
   }
 }
 
-function gqlItemToDict(node: JsonObject): Item {
+function projectItemUrl(cfg: Config, node: JsonObject): string {
+  if (!cfg.owner || !cfg.project_number || !String(node.id || "").startsWith("PVTI_")) {
+    return "";
+  }
+  const ownerPath = cfg.owner_type === "organization" ? "orgs" : "users";
+  return `https://github.com/${ownerPath}/${cfg.owner}/projects/${cfg.project_number}/views/1?pane=issue&itemId=${pvtiToItemid(String(node.id))}`;
+}
+
+function gqlItemToDict(node: JsonObject, cfg: Config): Item {
   let status = "";
   for (const fieldValue of node.fieldValues?.nodes || []) {
     const field = fieldValue.field || {};
@@ -259,7 +268,7 @@ function gqlItemToDict(node: JsonObject): Item {
       title: String(content.title || ""),
       body: String(content.body || ""),
       type: String(content.__typename || ""),
-      url: String(content.url || ""),
+      url: String(content.url || projectItemUrl(cfg, node)),
       number: typeof content.number === "number" ? content.number : null,
       repository: String(content.repository?.nameWithOwner || ""),
     },
@@ -308,12 +317,12 @@ async function itemListGraphql(
     fail("Project items not found in GraphQL response");
   }
   return [
-    (itemsData.nodes || []).map((node: JsonObject) => gqlItemToDict(node)),
+    (itemsData.nodes || []).map((node: JsonObject) => gqlItemToDict(node, cfg)),
     Number(itemsData.totalCount || 0),
   ];
 }
 
-async function itemGetGraphql(_cfg: Config, pvti: string): Promise<Item> {
+async function itemGetGraphql(cfg: Config, pvti: string): Promise<Item> {
   const query = `
     query($id: ID!) {
         node(id: $id) {
@@ -325,7 +334,7 @@ async function itemGetGraphql(_cfg: Config, pvti: string): Promise<Item> {
   if (!node?.id) {
     fail(`Item not found: ${pvti}`);
   }
-  return gqlItemToDict(node);
+  return gqlItemToDict(node, cfg);
 }
 
 function resolveFieldOption(cfg: Config, fieldName: string, optionName: string): [string, string] {
@@ -404,8 +413,9 @@ async function cmdSetup(args: string[]): Promise<void> {
 
   let entity: JsonObject | undefined;
   let project: JsonObject | undefined;
+  let ownerType: NonNullable<Config["owner_type"]> | undefined;
 
-  for (const gqlField of ["user", "organization"]) {
+  for (const gqlField of ["user", "organization"] as const) {
     const query = `
       query($login: String!, $number: Int!) {
         ${gqlField}(login: $login) {
@@ -439,6 +449,7 @@ async function cmdSetup(args: string[]): Promise<void> {
     if (candidate?.projectV2) {
       entity = candidate;
       project = candidate.projectV2;
+      ownerType = gqlField;
       break;
     }
   }
@@ -467,6 +478,7 @@ async function cmdSetup(args: string[]): Promise<void> {
   const config = existsSync(path) ? (readJsonFile(path) as Config) : {};
   Object.assign(config, {
     owner,
+    owner_type: ownerType,
     project_number: number,
     project_node_id: String(project.id),
     org_db_id: Number(entity.databaseId),
