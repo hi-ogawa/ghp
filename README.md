@@ -63,22 +63,22 @@ ghp ls -L 200
 Accepts browser URL numeric `itemId` or `PVTI_` node ID:
 
 ```bash
-ghp show 152396987
-ghp show PVTI_lADOD1nQwc4BNmeozgkVZLs
+ghp show 123456789
+ghp show PVTI_exampleNodeId
 ```
 
 ### Edit Item
 
 ```bash
-ghp edit 152396987 --title "new title"
-ghp edit 152396987 --body "updated description"
-ghp edit 152396987 --status "in progress" --priority P1
+ghp edit 123456789 --title "new title"
+ghp edit 123456789 --body "updated description"
+ghp edit 123456789 --status "in progress" --priority P1
 ```
 
 When passing Markdown bodies containing backticks, `$`, `*`, or shell-looking text, use a quoted heredoc so the shell does not execute or expand the content:
 
 ```bash
-ghp edit 152396987 --body "$(cat <<'EOF'
+ghp edit 123456789 --body "$(cat <<'EOF'
 ## Context
 
 - `literal backticks stay literal`
@@ -92,22 +92,22 @@ Do not put Markdown with backticks inside a double-quoted shell argument directl
 ### Move Item
 
 ```bash
-ghp mv 152396987 done
-ghp mv 152396987 "in progress"
+ghp mv 123456789 done
+ghp mv 123456789 "in progress"
 ```
 
 ### Archive / Delete
 
 ```bash
-ghp archive 152396987
-ghp delete 152396987
+ghp archive 123456789
+ghp delete 123456789
 ```
 
 ### ID Conversion
 
 ```bash
-ghp id 152396987
-ghp id PVTI_lADOD1nQwc4BNmeozgkVZLs
+ghp id 123456789
+ghp id PVTI_exampleNodeId
 ```
 
 ## Field Values
