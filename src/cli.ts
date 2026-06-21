@@ -382,20 +382,16 @@ async function setField(
 function cmdStatus(): void {
   const path = configPath();
   const hasConfig = existsSync(path);
-  const cfg = hasConfig ? (readJsonFile(path) as Partial<Config>) : {};
+  const cfg = hasConfig ? loadConfig() : undefined;
 
-  if (cfg.owner && cfg.owner_type && cfg.project_number) {
-    console.log(
-      `Project: ${projectUrl(cfg as Pick<Config, "owner" | "owner_type" | "project_number">)}`,
-    );
-  } else if (cfg.owner && cfg.project_number) {
-    console.log(`Project: ${cfg.owner}/projects/${cfg.project_number}`);
+  if (cfg) {
+    console.log(`Project: ${projectUrl(cfg)}`);
   } else {
     console.log("Project: not configured");
   }
   console.log(`Config:  ${path}${hasConfig ? "" : " (missing)"}`);
 
-  const fields = cfg.fields || {};
+  const fields = cfg?.fields || {};
   const entries = Object.entries(fields);
   if (entries.length > 0) {
     console.log("");
