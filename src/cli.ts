@@ -512,7 +512,7 @@ async function cmdSetup(args: string[]): Promise<void> {
   };
   saveConfig(config);
 
-  console.log(`Default set: ${projectUrl(config)}`);
+  console.log(`Configured project: ${projectUrl(config)}`);
   console.log(`Config written to: ${path}`);
   console.log("Fields discovered:");
   for (const [name, field] of Object.entries(fields)) {
