@@ -797,4 +797,7 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+main().catch((err: unknown) => {
+  console.error(errorMessage(err));
+  process.exit(1);
+});
