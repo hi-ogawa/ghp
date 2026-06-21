@@ -359,12 +359,6 @@ function cmdStatus(): void {
   }
   console.log(`Config:  ${path}${hasConfig ? "" : " (missing)"}`);
 
-  if (process.env.GH_TOKEN) {
-    console.log("Auth:    GH_TOKEN configured");
-  } else {
-    console.log("Auth:    not configured");
-  }
-
   const fields = cfg.fields || {};
   const entries = Object.entries(fields);
   if (entries.length > 0) {
