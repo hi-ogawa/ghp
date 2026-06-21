@@ -118,7 +118,7 @@ function readJsonFile(path: string): JsonObject {
   try {
     return JSON.parse(readFileSync(path, "utf8")) as JsonObject;
   } catch (err) {
-    throw new Error(`Failed to read JSON from ${path}: ${String(err)}`);
+    throw new Error(`Failed to read JSON from ${path}`, { cause: err });
   }
 }
 
@@ -235,7 +235,7 @@ async function ghGraphql(
   try {
     return JSON.parse(result.stdout) as JsonObject;
   } catch (err) {
-    throw new Error(`Failed to parse gh GraphQL response: ${String(err)}`);
+    throw new Error("Failed to parse gh GraphQL response", { cause: err });
   }
 }
 
@@ -439,7 +439,7 @@ async function cmdSetup(args: string[]): Promise<void> {
     try {
       data = JSON.parse(result.stdout) as JsonObject;
     } catch (err) {
-      throw new Error(`Failed to parse gh GraphQL response: ${String(err)}`);
+      throw new Error("Failed to parse gh GraphQL response", { cause: err });
     }
     const candidate = data.data?.[gqlField];
     if (candidate?.projectV2) {
