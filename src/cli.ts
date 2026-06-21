@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 type JsonObject = Record<string, any>;
 
@@ -65,6 +66,9 @@ Usage:
   ghp archive <id>
   ghp delete <id>
   ghp id <id>
+
+Full guide:
+  ${fileURLToPath(new URL("../README.md", import.meta.url))}
 `;
 }
 
