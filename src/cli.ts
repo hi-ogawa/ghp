@@ -32,6 +32,9 @@ type Item = {
     title: string;
     body: string;
     type: string;
+    url: string;
+    number: number | null;
+    repository: string;
   };
 };
 
@@ -50,8 +53,8 @@ const ITEM_FIELDS_FRAGMENT = `
     content {
         __typename
         ... on DraftIssue { id title body }
-        ... on Issue { id title body }
-        ... on PullRequest { id title body }
+        ... on Issue { id title body url number repository { nameWithOwner } }
+        ... on PullRequest { id title body url number repository { nameWithOwner } }
     }
 `;
 
@@ -256,6 +259,9 @@ function gqlItemToDict(node: JsonObject): Item {
       title: String(content.title || ""),
       body: String(content.body || ""),
       type: String(content.__typename || ""),
+      url: String(content.url || ""),
+      number: typeof content.number === "number" ? content.number : null,
+      repository: String(content.repository?.nameWithOwner || ""),
     },
   };
 }
