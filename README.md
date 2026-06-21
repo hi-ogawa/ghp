@@ -121,3 +121,22 @@ Typical values:
 - **Size**: `XS`, `S`, `M`, `L`, `XL`
 
 All field value arguments are matched case-insensitively: `done`, `Done`, and `DONE` all work.
+
+## Development
+
+Test locally on checkout source
+
+```sh
+pnpm install
+pnpm vp config
+
+# optionally make this checkout available as the global CLI while developing
+pnpm link --global
+
+# run from checkout source
+pnpm cli --help
+pnpm lint-check
+
+# run with global link
+ghp --help
+```
