@@ -21,7 +21,8 @@ gh auth login -s project
 Initialize project metadata:
 
 ```bash
-ghp setup <owner> <project-number>
+ghp setup https://github.com/users/OWNER/projects/PROJECT_NUMBER
+ghp setup https://github.com/orgs/ORG/projects/PROJECT_NUMBER
 ghp status
 ```
 
@@ -32,6 +33,17 @@ Config is stored at `$GHP_CONFIG` when set, otherwise at:
 ```
 
 ## Commands
+
+### Setup
+
+Initialize the default project and cache its field metadata:
+
+```bash
+ghp setup https://github.com/users/OWNER/projects/PROJECT_NUMBER
+ghp setup https://github.com/orgs/ORG/projects/PROJECT_NUMBER
+```
+
+URLs copied from a project view, such as `/views/1`, are also accepted.
 
 ### Status
 

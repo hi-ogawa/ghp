@@ -64,7 +64,7 @@ function usage(): string {
 
 Usage:
   ghp status
-  ghp setup <owner> <project-number>
+  ghp setup <project-url>
   ghp add "task title" [--body "..."] [--status backlog] [--priority p1]
   ghp ls [--query "status:Backlog"] [--limit 100] [--json]
   ghp show <id>
@@ -90,7 +90,7 @@ function configPath(): string {
 function loadConfig(): Config {
   const path = configPath();
   if (!existsSync(path)) {
-    throw new Error(`No project configured. Run: ghp setup <owner> <number>`);
+    throw new Error(`No project configured. Run: ghp setup <project-url>`);
   }
   const config = readJsonFile(path) as Partial<Config>;
   for (const key of [
@@ -103,7 +103,7 @@ function loadConfig(): Config {
     "fields",
   ] as const) {
     if (config[key] === undefined || config[key] === null || config[key] === "") {
-      throw new Error(`Missing ${key} in ${path}. Run: ghp setup <owner> <number>`);
+      throw new Error(`Missing ${key} in ${path}. Run: ghp setup <project-url>`);
     }
   }
   return config as Config;
@@ -243,6 +243,36 @@ async function ghGraphql(
 function projectUrl(cfg: Pick<Config, "owner" | "owner_type" | "project_number">): string {
   const ownerPath = cfg.owner_type === "organization" ? "orgs" : "users";
   return `https://github.com/${ownerPath}/${cfg.owner}/projects/${cfg.project_number}`;
+}
+
+function parseProjectUrl(value: string): Pick<Config, "owner" | "owner_type" | "project_number"> {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch (err) {
+    throw new Error(`Invalid project URL: ${value}`, { cause: err });
+  }
+
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (
+    url.hostname !== "github.com" ||
+    (parts.length !== 4 && !(parts.length === 6 && parts[4] === "views")) ||
+    parts[2] !== "projects" ||
+    !["users", "orgs"].includes(parts[0])
+  ) {
+    throw new Error("Usage: ghp setup <project-url>");
+  }
+
+  const projectNumber = Number.parseInt(parts[3], 10);
+  if (!Number.isInteger(projectNumber) || String(projectNumber) !== parts[3]) {
+    throw new Error(`Invalid project number: ${parts[3]}`);
+  }
+
+  return {
+    owner: parts[1],
+    owner_type: parts[0] === "orgs" ? "organization" : "user",
+    project_number: projectNumber,
+  };
 }
 
 function projectItemUrl(cfg: Config, node: JsonObject): string {
@@ -403,21 +433,16 @@ function cmdStatus(): void {
 }
 
 async function cmdSetup(args: string[]): Promise<void> {
-  if (args.length !== 2) {
-    throw new Error("Usage: ghp setup <owner> <project-number>");
+  if (args.length !== 1) {
+    throw new Error("Usage: ghp setup <project-url>");
   }
-  const [owner, rawNumber] = args;
-  const number = Number.parseInt(rawNumber, 10);
-  if (!Number.isInteger(number)) {
-    throw new Error(`Invalid project number: ${rawNumber}`);
-  }
+  const { owner, owner_type: ownerType, project_number: number } = parseProjectUrl(args[0]);
 
   let entity: JsonObject | undefined;
   let project: JsonObject | undefined;
-  let ownerType: Config["owner_type"] | undefined;
 
-  for (const gqlField of ["user", "organization"] as const) {
-    const query = `
+  const gqlField = ownerType;
+  const query = `
       query($login: String!, $number: Int!) {
         ${gqlField}(login: $login) {
           databaseId
@@ -436,26 +461,26 @@ async function cmdSetup(args: string[]): Promise<void> {
           }
         }
       }`;
-    const result = await runGhGraphql(query, { login: owner, number });
-    if (result.status !== 0) {
-      continue;
+  const result = await runGhGraphql(query, { login: owner, number });
+  if (result.status !== 0) {
+    if (result.stderr) {
+      console.error(result.stderr.trimEnd());
     }
-    let data: JsonObject;
-    try {
-      data = JSON.parse(result.stdout) as JsonObject;
-    } catch (err) {
-      throw new Error("Failed to parse gh GraphQL response", { cause: err });
-    }
-    const candidate = data.data?.[gqlField];
-    if (candidate?.projectV2) {
-      entity = candidate;
-      project = candidate.projectV2;
-      ownerType = gqlField;
-      break;
-    }
+    process.exit(result.status || 1);
+  }
+  let data: JsonObject;
+  try {
+    data = JSON.parse(result.stdout) as JsonObject;
+  } catch (err) {
+    throw new Error("Failed to parse gh GraphQL response", { cause: err });
+  }
+  const candidate = data.data?.[gqlField];
+  if (candidate?.projectV2) {
+    entity = candidate;
+    project = candidate.projectV2;
   }
 
-  if (!entity || !project || !ownerType) {
+  if (!entity || !project) {
     throw new Error(`Project not found: ${owner}/${number}`);
   }
 
@@ -487,7 +512,7 @@ async function cmdSetup(args: string[]): Promise<void> {
   };
   saveConfig(config);
 
-  console.log(`Default set: ${owner}/projects/${number}`);
+  console.log(`Default set: ${projectUrl(config)}`);
   console.log(`Config written to: ${path}`);
   console.log("Fields discovered:");
   for (const [name, field] of Object.entries(fields)) {
