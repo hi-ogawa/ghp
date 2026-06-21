@@ -23,8 +23,6 @@ type Config = {
   fields: Record<string, ConfigField>;
 };
 
-type PartialConfig = Partial<Config>;
-
 type Item = {
   id: string;
   title: string;
@@ -98,7 +96,7 @@ function loadConfig(): Config {
   if (!existsSync(path)) {
     fail(`No project configured. Run: ghp setup <owner> <number>`);
   }
-  const config = readJsonFile(path) as PartialConfig;
+  const config = readJsonFile(path) as Partial<Config>;
   for (const key of [
     "owner",
     "owner_type",
@@ -384,7 +382,7 @@ async function setField(
 function cmdStatus(): void {
   const path = configPath();
   const hasConfig = existsSync(path);
-  const cfg = hasConfig ? (readJsonFile(path) as PartialConfig) : {};
+  const cfg = hasConfig ? (readJsonFile(path) as Partial<Config>) : {};
 
   if (cfg.owner && cfg.project_number) {
     console.log(`Project: ${cfg.owner}/projects/${cfg.project_number}`);
