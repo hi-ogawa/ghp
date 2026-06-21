@@ -763,7 +763,6 @@ async function main(): Promise<void> {
       cmdStatus();
       break;
     case "setup":
-    case "set-default":
       await cmdSetup(args);
       break;
     case "add":
