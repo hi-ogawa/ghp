@@ -18,12 +18,6 @@ Authenticate with `gh`:
 gh auth login -s project
 ```
 
-Or save a token for `ghp` to pass as `GH_TOKEN` when it runs `gh`:
-
-```bash
-echo ghp_xxxxxxxxxxxx | ghp auth
-```
-
 Configure the default project:
 
 ```bash

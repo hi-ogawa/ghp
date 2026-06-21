@@ -8,7 +8,6 @@ import process from "node:process";
 type JsonObject = Record<string, any>;
 
 type Config = {
-  gh_token?: string;
   owner?: string;
   project_number?: number;
   project_node_id?: string;
@@ -57,7 +56,6 @@ function usage(): string {
   return `ghp - ergonomic CLI wrapper for GitHub Projects
 
 Usage:
-  ghp auth
   ghp status
   ghp setup <owner> <project-number>
   ghp add "task title" [--body "..."] [--status backlog] [--priority p1]
@@ -82,20 +80,6 @@ function configPath(): string {
   }
   const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
   return join(base, "ghp", "config.json");
-}
-
-function loadAuth(): void {
-  if (process.env.GH_TOKEN) {
-    return;
-  }
-  const path = configPath();
-  if (!existsSync(path)) {
-    return;
-  }
-  const cfg = readJsonFile(path) as Config;
-  if (cfg.gh_token) {
-    process.env.GH_TOKEN = cfg.gh_token;
-  }
 }
 
 function loadConfig(): Config {
@@ -360,18 +344,6 @@ async function setField(
   );
 }
 
-function cmdAuth(): void {
-  const token = readFileSync(0, "utf8").trim();
-  if (!token) {
-    fail("Usage: echo TOKEN | ghp auth");
-  }
-  const path = configPath();
-  const config = existsSync(path) ? (readJsonFile(path) as Config) : {};
-  config.gh_token = token;
-  saveConfig(config);
-  console.log(`Token saved to ${path}`);
-}
-
 function cmdStatus(): void {
   const path = configPath();
   const hasConfig = existsSync(path);
@@ -386,8 +358,6 @@ function cmdStatus(): void {
 
   if (process.env.GH_TOKEN) {
     console.log("Auth:    GH_TOKEN configured");
-  } else if (cfg.gh_token) {
-    console.log("Auth:    token configured in config");
   } else {
     console.log("Auth:    not configured");
   }
@@ -759,8 +729,6 @@ function errorMessage(err: unknown): string {
 }
 
 async function main(): Promise<void> {
-  loadAuth();
-
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || command === "-h" || command === "help") {
     console.log(usage());
@@ -768,9 +736,6 @@ async function main(): Promise<void> {
   }
 
   switch (command) {
-    case "auth":
-      cmdAuth();
-      break;
     case "status":
       cmdStatus();
       break;
