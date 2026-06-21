@@ -213,15 +213,26 @@ async function gh(...args: string[]): Promise<string> {
   return result.stdout;
 }
 
-async function ghGraphql(
-  query: string,
-  variables: Record<string, string | number>,
-): Promise<JsonObject> {
+function ghGraphqlArgs(query: string, variables: Record<string, string | number>): string[] {
   const args = ["api", "graphql", "-f", `query=${query}`];
   for (const [key, value] of Object.entries(variables)) {
     args.push(typeof value === "string" ? "-f" : "-F", `${key}=${String(value)}`);
   }
-  const result = await runGh(args);
+  return args;
+}
+
+async function runGhGraphql(
+  query: string,
+  variables: Record<string, string | number>,
+): Promise<GhResult> {
+  return await runGh(ghGraphqlArgs(query, variables));
+}
+
+async function ghGraphql(
+  query: string,
+  variables: Record<string, string | number>,
+): Promise<JsonObject> {
+  const result = await runGhGraphql(query, variables);
   if (result.status !== 0) {
     if (result.stderr) {
       console.error(result.stderr.trimEnd());
@@ -373,7 +384,7 @@ async function cmdSetDefault(args: string[]): Promise<void> {
   let entity: JsonObject | undefined;
   let project: JsonObject | undefined;
 
-  for (const gqlField of ["organization", "user"]) {
+  for (const gqlField of ["user", "organization"]) {
     const query = `
       query($login: String!, $number: Int!) {
         ${gqlField}(login: $login) {
@@ -393,7 +404,16 @@ async function cmdSetDefault(args: string[]): Promise<void> {
           }
         }
       }`;
-    const data = await ghGraphql(query, { login: owner, number });
+    const result = await runGhGraphql(query, { login: owner, number });
+    if (result.status !== 0) {
+      continue;
+    }
+    let data: JsonObject;
+    try {
+      data = JSON.parse(result.stdout) as JsonObject;
+    } catch (err) {
+      fail(`Failed to parse gh GraphQL response: ${errorMessage(err)}`);
+    }
     const candidate = data.data?.[gqlField];
     if (candidate?.projectV2) {
       entity = candidate;
