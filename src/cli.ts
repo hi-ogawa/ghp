@@ -123,7 +123,7 @@ function readJsonFile(path: string): JsonObject {
   try {
     return JSON.parse(readFileSync(path, "utf8")) as JsonObject;
   } catch (err) {
-    fail(`Failed to read JSON from ${path}: ${errorMessage(err)}`);
+    fail(`Failed to read JSON from ${path}: ${String(err)}`);
   }
 }
 
@@ -240,7 +240,7 @@ async function ghGraphql(
   try {
     return JSON.parse(result.stdout) as JsonObject;
   } catch (err) {
-    fail(`Failed to parse gh GraphQL response: ${errorMessage(err)}`);
+    fail(`Failed to parse gh GraphQL response: ${String(err)}`);
   }
 }
 
@@ -444,7 +444,7 @@ async function cmdSetup(args: string[]): Promise<void> {
     try {
       data = JSON.parse(result.stdout) as JsonObject;
     } catch (err) {
-      fail(`Failed to parse gh GraphQL response: ${errorMessage(err)}`);
+      fail(`Failed to parse gh GraphQL response: ${String(err)}`);
     }
     const candidate = data.data?.[gqlField];
     if (candidate?.projectV2) {
@@ -749,10 +749,6 @@ function parseCommandArgs(args: string[], options: ParseOptions): ParsedArgs {
   return parsed;
 }
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || command === "-h" || command === "help") {
@@ -798,6 +794,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error(errorMessage(err));
+  console.error(String(err));
   process.exit(1);
 });
