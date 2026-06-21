@@ -7,12 +7,6 @@ import { fileURLToPath } from "node:url";
 
 type JsonObject = Record<string, any>;
 
-type ConfigField = {
-  id: string;
-  name: string;
-  options: Record<string, string>;
-};
-
 type Config = {
   owner: string;
   owner_type: "user" | "organization";
@@ -20,7 +14,14 @@ type Config = {
   project_node_id: string;
   org_db_id: number;
   project_db_id: number;
-  fields: Record<string, ConfigField>;
+  fields: Record<
+    string,
+    {
+      id: string;
+      name: string;
+      options: Record<string, string>;
+    }
+  >;
 };
 
 type Item = {
