@@ -786,7 +786,7 @@ async function main(): Promise<void> {
       cmdId(args);
       break;
     default:
-      throw new Error(`Unknown command: ${command}\n\n${usage()}`);
+      throw new Error(`Unknown command: ${command}`);
   }
 }
 
