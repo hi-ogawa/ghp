@@ -8,13 +8,13 @@ import { fileURLToPath } from "node:url";
 type JsonObject = Record<string, any>;
 
 type Config = {
-  owner?: string;
-  owner_type?: "user" | "organization";
-  project_number?: number;
-  project_node_id?: string;
-  org_db_id?: number;
-  project_db_id?: number;
-  fields?: Record<
+  owner: string;
+  owner_type: "user" | "organization";
+  project_number: number;
+  project_node_id: string;
+  org_db_id: number;
+  project_db_id: number;
+  fields: Record<
     string,
     {
       id: string;
@@ -79,11 +79,6 @@ Full guide:
 `;
 }
 
-function fail(message: string, code = 1): never {
-  console.error(message);
-  process.exit(code);
-}
-
 function configPath(): string {
   if (process.env.GHP_CONFIG) {
     return process.env.GHP_CONFIG;
@@ -95,9 +90,23 @@ function configPath(): string {
 function loadConfig(): Config {
   const path = configPath();
   if (!existsSync(path)) {
-    fail(`No project configured. Run: ghp setup <owner> <number>`);
+    throw new Error(`No project configured. Run: ghp setup <owner> <number>`);
   }
-  return readJsonFile(path) as Config;
+  const config = readJsonFile(path) as Partial<Config>;
+  for (const key of [
+    "owner",
+    "owner_type",
+    "project_number",
+    "project_node_id",
+    "org_db_id",
+    "project_db_id",
+    "fields",
+  ] as const) {
+    if (config[key] === undefined || config[key] === null || config[key] === "") {
+      throw new Error(`Missing ${key} in ${path}. Run: ghp setup <owner> <number>`);
+    }
+  }
+  return config as Config;
 }
 
 function saveConfig(config: Config): void {
@@ -110,16 +119,8 @@ function readJsonFile(path: string): JsonObject {
   try {
     return JSON.parse(readFileSync(path, "utf8")) as JsonObject;
   } catch (err) {
-    fail(`Failed to read JSON from ${path}: ${errorMessage(err)}`);
+    throw new Error(`Failed to read JSON from ${path}`, { cause: err });
   }
-}
-
-function requireConfig<T>(cfg: Config, key: keyof Config): T {
-  const value = cfg[key];
-  if (value === undefined || value === null || value === "") {
-    fail(`Missing ${String(key)} in ${configPath()}. Run: ghp setup <owner> <number>`);
-  }
-  return value as T;
 }
 
 function itemidToPvti(orgDbId: number, projectDbId: number, itemDbId: number): string {
@@ -137,12 +138,12 @@ function itemidToPvti(orgDbId: number, projectDbId: number, itemDbId: number): s
 
 function pvtiToItemid(nodeId: string): number {
   if (!nodeId.startsWith("PVTI_")) {
-    fail(`Expected PVTI_ node ID, got: ${nodeId}`);
+    throw new Error(`Expected PVTI_ node ID, got: ${nodeId}`);
   }
   const encoded = nodeId.slice("PVTI_".length);
   const decoded = Buffer.from(encoded, "base64url");
   if (decoded.length < 17) {
-    fail(`Invalid PVTI_ node ID: ${nodeId}`);
+    throw new Error(`Invalid PVTI_ node ID: ${nodeId}`);
   }
   return decoded.readUInt32BE(13);
 }
@@ -151,13 +152,11 @@ function resolveId(cfg: Config, value: string): string {
   if (value.startsWith("PVTI_")) {
     return value;
   }
-  const orgDbId = requireConfig<number>(cfg, "org_db_id");
-  const projectDbId = requireConfig<number>(cfg, "project_db_id");
   const itemDbId = Number.parseInt(value, 10);
   if (!Number.isInteger(itemDbId)) {
-    fail(`Expected numeric item ID or PVTI_ node ID, got: ${value}`);
+    throw new Error(`Expected numeric item ID or PVTI_ node ID, got: ${value}`);
   }
-  return itemidToPvti(orgDbId, projectDbId, itemDbId);
+  return itemidToPvti(cfg.org_db_id, cfg.project_db_id, itemDbId);
 }
 
 type GhResult = {
@@ -167,7 +166,7 @@ type GhResult = {
 };
 
 async function runGh(args: string[]): Promise<GhResult> {
-  return await new Promise<GhResult>((resolve) => {
+  return await new Promise<GhResult>((resolve, reject) => {
     const child = spawn("gh", args, {
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -187,7 +186,7 @@ async function runGh(args: string[]): Promise<GhResult> {
     });
 
     child.on("error", (err) => {
-      fail(`Failed to run gh: ${err.message}`);
+      reject(new Error(`Failed to run gh: ${err.message}`));
     });
 
     child.on("close", (status) => {
@@ -237,12 +236,12 @@ async function ghGraphql(
   try {
     return JSON.parse(result.stdout) as JsonObject;
   } catch (err) {
-    fail(`Failed to parse gh GraphQL response: ${errorMessage(err)}`);
+    throw new Error("Failed to parse gh GraphQL response", { cause: err });
   }
 }
 
 function projectItemUrl(cfg: Config, node: JsonObject): string {
-  if (!cfg.owner || !cfg.project_number || !String(node.id || "").startsWith("PVTI_")) {
+  if (!String(node.id || "").startsWith("PVTI_")) {
     return "";
   }
   const ownerPath = cfg.owner_type === "organization" ? "orgs" : "users";
@@ -293,7 +292,6 @@ async function itemListGraphql(
   limit: number,
   queryFilter?: string,
 ): Promise<[Item[], number]> {
-  const projectId = requireConfig<string>(cfg, "project_node_id");
   const query = `
     query($projectId: ID!, $limit: Int!, $filter: String) {
         node(id: $projectId) {
@@ -306,7 +304,7 @@ async function itemListGraphql(
         }
     }`;
 
-  const variables: Record<string, string | number> = { projectId, limit };
+  const variables: Record<string, string | number> = { projectId: cfg.project_node_id, limit };
   if (queryFilter) {
     variables.filter = queryFilter;
   }
@@ -314,7 +312,7 @@ async function itemListGraphql(
   const data = await ghGraphql(query, variables);
   const itemsData = data.data?.node?.items;
   if (!itemsData) {
-    fail("Project items not found in GraphQL response");
+    throw new Error("Project items not found in GraphQL response");
   }
   return [
     (itemsData.nodes || []).map((node: JsonObject) => gqlItemToDict(node, cfg)),
@@ -332,17 +330,17 @@ async function itemGetGraphql(cfg: Config, pvti: string): Promise<Item> {
   const data = await ghGraphql(query, { id: pvti });
   const node = data.data?.node;
   if (!node?.id) {
-    fail(`Item not found: ${pvti}`);
+    throw new Error(`Item not found: ${pvti}`);
   }
   return gqlItemToDict(node, cfg);
 }
 
 function resolveFieldOption(cfg: Config, fieldName: string, optionName: string): [string, string] {
-  const fields = cfg.fields || {};
+  const fields = cfg.fields;
   const key = fieldName.toLowerCase();
   const field = fields[key];
   if (!field) {
-    fail(`Unknown field: ${fieldName}\nValid: ${Object.keys(fields).join(", ")}`);
+    throw new Error(`Unknown field: ${fieldName}\nValid: ${Object.keys(fields).join(", ")}`);
   }
 
   const query = optionName.toLowerCase().trim();
@@ -352,7 +350,7 @@ function resolveFieldOption(cfg: Config, fieldName: string, optionName: string):
     }
   }
 
-  fail(
+  throw new Error(
     `Unknown ${fieldName} option: ${optionName}\nValid: ${Object.keys(field.options).join(", ")}`,
   );
 }
@@ -363,14 +361,13 @@ async function setField(
   fieldName: string,
   optionName: string,
 ): Promise<void> {
-  const projectId = requireConfig<string>(cfg, "project_node_id");
   const [fieldId, optionId] = resolveFieldOption(cfg, fieldName, optionName);
   await gh(
     "item-edit",
     "--id",
     pvti,
     "--project-id",
-    projectId,
+    cfg.project_node_id,
     "--field-id",
     fieldId,
     "--single-select-option-id",
@@ -381,7 +378,7 @@ async function setField(
 function cmdStatus(): void {
   const path = configPath();
   const hasConfig = existsSync(path);
-  const cfg = hasConfig ? (readJsonFile(path) as Config) : {};
+  const cfg = hasConfig ? (readJsonFile(path) as Partial<Config>) : {};
 
   if (cfg.owner && cfg.project_number) {
     console.log(`Project: ${cfg.owner}/projects/${cfg.project_number}`);
@@ -403,17 +400,17 @@ function cmdStatus(): void {
 
 async function cmdSetup(args: string[]): Promise<void> {
   if (args.length !== 2) {
-    fail("Usage: ghp setup <owner> <project-number>");
+    throw new Error("Usage: ghp setup <owner> <project-number>");
   }
   const [owner, rawNumber] = args;
   const number = Number.parseInt(rawNumber, 10);
   if (!Number.isInteger(number)) {
-    fail(`Invalid project number: ${rawNumber}`);
+    throw new Error(`Invalid project number: ${rawNumber}`);
   }
 
   let entity: JsonObject | undefined;
   let project: JsonObject | undefined;
-  let ownerType: NonNullable<Config["owner_type"]> | undefined;
+  let ownerType: Config["owner_type"] | undefined;
 
   for (const gqlField of ["user", "organization"] as const) {
     const query = `
@@ -443,7 +440,7 @@ async function cmdSetup(args: string[]): Promise<void> {
     try {
       data = JSON.parse(result.stdout) as JsonObject;
     } catch (err) {
-      fail(`Failed to parse gh GraphQL response: ${errorMessage(err)}`);
+      throw new Error("Failed to parse gh GraphQL response", { cause: err });
     }
     const candidate = data.data?.[gqlField];
     if (candidate?.projectV2) {
@@ -454,11 +451,11 @@ async function cmdSetup(args: string[]): Promise<void> {
     }
   }
 
-  if (!entity || !project) {
-    fail(`Project not found: ${owner}/${number}`);
+  if (!entity || !project || !ownerType) {
+    throw new Error(`Project not found: ${owner}/${number}`);
   }
 
-  const fields: NonNullable<Config["fields"]> = {};
+  const fields: Config["fields"] = {};
   for (const node of project.fields?.nodes || []) {
     if (!node?.id || !node?.options) {
       continue;
@@ -475,8 +472,7 @@ async function cmdSetup(args: string[]): Promise<void> {
   }
 
   const path = configPath();
-  const config = existsSync(path) ? (readJsonFile(path) as Config) : {};
-  Object.assign(config, {
+  const config: Config = {
     owner,
     owner_type: ownerType,
     project_number: number,
@@ -484,7 +480,7 @@ async function cmdSetup(args: string[]): Promise<void> {
     org_db_id: Number(entity.databaseId),
     project_db_id: Number(project.databaseId),
     fields,
-  });
+  };
   saveConfig(config);
 
   console.log(`Default set: ${owner}/projects/${number}`);
@@ -507,21 +503,21 @@ async function cmdAdd(args: string[]): Promise<void> {
     ]),
   });
   if (parsed.positionals.length !== 1) {
-    fail('Usage: ghp add "task title" [--body "..."] [--status backlog] [--priority p1]');
+    throw new Error(
+      'Usage: ghp add "task title" [--body "..."] [--status backlog] [--priority p1]',
+    );
   }
 
   const cfg = loadConfig();
   const title = parsed.positionals[0];
-  const owner = requireConfig<string>(cfg, "owner");
-  const projectNumber = requireConfig<number>(cfg, "project_number");
   const isUrl = title.startsWith("https://");
 
   const raw = isUrl
     ? await gh(
         "item-add",
-        String(projectNumber),
+        String(cfg.project_number),
         "--owner",
-        owner,
+        cfg.owner,
         "--url",
         title,
         "--format",
@@ -529,9 +525,9 @@ async function cmdAdd(args: string[]): Promise<void> {
       )
     : await gh(
         "item-create",
-        String(projectNumber),
+        String(cfg.project_number),
         "--owner",
-        owner,
+        cfg.owner,
         "--title",
         title,
         ...(parsed.values.body ? ["--body", parsed.values.body] : []),
@@ -576,12 +572,12 @@ async function cmdLs(args: string[]): Promise<void> {
     ]),
   });
   if (parsed.positionals.length !== 0) {
-    fail('Usage: ghp ls [--query "status:Backlog"] [--limit 100] [--json]');
+    throw new Error('Usage: ghp ls [--query "status:Backlog"] [--limit 100] [--json]');
   }
 
   const limit = parsed.values.limit ? Number.parseInt(parsed.values.limit, 10) : DEFAULT_LIMIT;
   if (!Number.isInteger(limit) || limit < 1) {
-    fail(`Invalid limit: ${parsed.values.limit}`);
+    throw new Error(`Invalid limit: ${parsed.values.limit}`);
   }
 
   const cfg = loadConfig();
@@ -606,7 +602,7 @@ async function cmdLs(args: string[]): Promise<void> {
 
 async function cmdShow(args: string[]): Promise<void> {
   if (args.length !== 1) {
-    fail("Usage: ghp show <id>");
+    throw new Error("Usage: ghp show <id>");
   }
   const cfg = loadConfig();
   const pvti = resolveId(cfg, args[0]);
@@ -628,20 +624,19 @@ async function cmdEdit(args: string[]): Promise<void> {
     ]),
   });
   if (parsed.positionals.length !== 1) {
-    fail('Usage: ghp edit <id> [--title "..."] [--body "..."] [--status done]');
+    throw new Error('Usage: ghp edit <id> [--title "..."] [--body "..."] [--status done]');
   }
 
   const cfg = loadConfig();
   const pvti = resolveId(cfg, parsed.positionals[0]);
 
   if (parsed.values.title || parsed.values.body) {
-    const projectId = requireConfig<string>(cfg, "project_node_id");
     const item = await itemGetGraphql(cfg, pvti);
     const contentId = item.content.id;
     if (!contentId || item.content.type !== "DraftIssue") {
-      fail(`Item has no editable draft issue content: ${pvti}`);
+      throw new Error(`Item has no editable draft issue content: ${pvti}`);
     }
-    const editArgs = ["item-edit", "--id", contentId, "--project-id", projectId];
+    const editArgs = ["item-edit", "--id", contentId, "--project-id", cfg.project_node_id];
     if (parsed.values.title) {
       editArgs.push("--title", parsed.values.title);
     }
@@ -666,7 +661,7 @@ async function cmdEdit(args: string[]): Promise<void> {
 
 async function cmdMv(args: string[]): Promise<void> {
   if (args.length !== 2) {
-    fail("Usage: ghp mv <id> <status>");
+    throw new Error("Usage: ghp mv <id> <status>");
   }
   const cfg = loadConfig();
   const pvti = resolveId(cfg, args[0]);
@@ -676,44 +671,38 @@ async function cmdMv(args: string[]): Promise<void> {
 
 async function cmdArchive(args: string[]): Promise<void> {
   if (args.length !== 1) {
-    fail("Usage: ghp archive <id>");
+    throw new Error("Usage: ghp archive <id>");
   }
   const cfg = loadConfig();
   const pvti = resolveId(cfg, args[0]);
-  const owner = requireConfig<string>(cfg, "owner");
-  const projectNumber = requireConfig<number>(cfg, "project_number");
-  await gh("item-archive", String(projectNumber), "--owner", owner, "--id", pvti);
+  await gh("item-archive", String(cfg.project_number), "--owner", cfg.owner, "--id", pvti);
   console.log(`Archived ${pvti}`);
 }
 
 async function cmdDelete(args: string[]): Promise<void> {
   if (args.length !== 1) {
-    fail("Usage: ghp delete <id>");
+    throw new Error("Usage: ghp delete <id>");
   }
   const cfg = loadConfig();
   const pvti = resolveId(cfg, args[0]);
-  const owner = requireConfig<string>(cfg, "owner");
-  const projectNumber = requireConfig<number>(cfg, "project_number");
-  await gh("item-delete", String(projectNumber), "--owner", owner, "--id", pvti);
+  await gh("item-delete", String(cfg.project_number), "--owner", cfg.owner, "--id", pvti);
   console.log(`Deleted ${pvti}`);
 }
 
 function cmdId(args: string[]): void {
   if (args.length !== 1) {
-    fail("Usage: ghp id <id>");
+    throw new Error("Usage: ghp id <id>");
   }
   const cfg = loadConfig();
   const value = args[0];
   if (value.startsWith("PVTI_")) {
     console.log(pvtiToItemid(value));
   } else {
-    const orgDbId = requireConfig<number>(cfg, "org_db_id");
-    const projectDbId = requireConfig<number>(cfg, "project_db_id");
     const itemDbId = Number.parseInt(value, 10);
     if (!Number.isInteger(itemDbId)) {
-      fail(`Expected numeric item ID or PVTI_ node ID, got: ${value}`);
+      throw new Error(`Expected numeric item ID or PVTI_ node ID, got: ${value}`);
     }
-    console.log(itemidToPvti(orgDbId, projectDbId, itemDbId));
+    console.log(itemidToPvti(cfg.org_db_id, cfg.project_db_id, itemDbId));
   }
 }
 
@@ -739,7 +728,7 @@ function parseCommandArgs(args: string[], options: ParseOptions): ParsedArgs {
       const key = valueFlags.get(arg)!;
       const value = args[i + 1];
       if (value === undefined) {
-        fail(`Missing value for ${arg}`);
+        throw new Error(`Missing value for ${arg}`);
       }
       parsed.values[key] = value;
       i += 1;
@@ -750,16 +739,12 @@ function parseCommandArgs(args: string[], options: ParseOptions): ParsedArgs {
       continue;
     }
     if (arg.startsWith("-")) {
-      fail(`Unknown option: ${arg}`);
+      throw new Error(`Unknown option: ${arg}`);
     }
     parsed.positionals.push(arg);
   }
 
   return parsed;
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 async function main(): Promise<void> {
@@ -802,8 +787,11 @@ async function main(): Promise<void> {
       cmdId(args);
       break;
     default:
-      fail(`Unknown command: ${command}\n\n${usage()}`);
+      throw new Error(`Unknown command: ${command}`);
   }
 }
 
-await main();
+main().catch((err: unknown) => {
+  console.error(err);
+  process.exit(1);
+});
